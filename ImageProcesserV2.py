@@ -814,3 +814,4 @@ os.remove("temp.png")
 os.remove("temp2.png")
 os.remove("OutImg.png")
 window.close()
+
