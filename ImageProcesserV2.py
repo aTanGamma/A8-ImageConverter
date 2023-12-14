@@ -2,7 +2,11 @@ import numpy as np
 import PySimpleGUI as gui
 import os.path
 import os
-import png
+from PIL import Image
+import io
+
+
+
 
 def ColPick_Window():
 
@@ -57,10 +61,6 @@ def ColPick_Window():
         return [AtariCols[0][0], Col, Lum]
     else:
         return [AtariCols[Col][Lum], Col, Lum]
-
-def ColsFromImg():
-
-    return 0
 
 def HueValPick_Window():
 
@@ -255,106 +255,134 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         return AdjustedRGB
 
     #Does all the image processing
-
-    InputImg = png.Reader(filename = Path).read_flat()
     
-    ImgWidth = InputImg[0]
-    ImgHeight = InputImg[1]
-    ImgData = InputImg[2]
-    Metadata = InputImg[3]  #Get Image raw Data
-    
-    if Metadata.get('palette') == None: #Get colours / palette
+    InputImg = Image.open(Path)
 
-        ImgPalette = ColsFromImg()
+    ImgBounds = InputImg.getbbox()
+
+    ImgWidth = ImgBounds[2]
+    ImgHeight = ImgBounds[3]
+    ImgData = list(InputImg.getdata())
+
+    Palettised = False
+
+    if InputImg.getpalette() == None: #Get colours / palette
+
+        RawPalette = InputImg.getcolors(ImgWidth*ImgHeight)
+        
+        if not RawPalette:
+            InputImg.close()
+            raise Exception('Error collecting image palette...')
+        
+        ImgPalette = [[RawPalette[i][1][0], RawPalette[i][1][1], RawPalette[i][1][2]] for i in range(len(RawPalette))]
+
+        Palettised = False
 
     else:
-        ImgPalette = Metadata.get('palette')
 
-    IntCols = ParseCols(Cols) #Convert list of strings'#RRGGBB' to array containing [[RR, GG, BB], [RR, GG, BB]...]
-
-    ImgPalette = AdjustCols(Hue, Sat, Brightness, ImgPalette)   #Adjusts the image colour palette brightness
-
-    #Generate adjusted input image
-
-    AdjustedImg = [[ImgPalette[ImgData[(i * ImgWidth) + j]][n]
-                    for j in range(ImgWidth)
-                    for n in range(3)]
-                    for i in range(ImgHeight)]  #Format image as [R...G...B...], [R...G...B...]
-
-    ShrunkImg = [[0,0,0]]
-
-    TempImg = [[0,0,0]]
-
-    NewImg = [[0,0,0]]
-
-    if Mode == 0:   #160x96, not interlaced
-
-        ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)    
-        RefPalette = CalcColDist(ImgPalette, IntCols[0:4])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
-        NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
+        RawPalette = InputImg.getpalette()
+        ImgPalette = [[RawPalette[3*i], RawPalette[(3*i)+1], RawPalette[(3*i)+2]] for i in range(len(RawPalette) // 3)]   
         
-        ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 4, 4, OutW, OutH)
+        Palettised = True
 
-        TempImg = [[IntCols[ResizedTempImg[(i*TempW) + j]][n]
-                    for j in range(TempW)
-                    for n in range(3)]
-                    for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-
-        NewImg = [[IntCols[NewImgCols[(i * OutW) + j]][n]
-                    for j in range(OutW)
-                    for n in range(3)]
-                    for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
-
-    elif Mode == 2: #80x192, 16 Lum, not interlaced
-
-        ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
-
-        RefPalette = CalcColDist(ImgPalette, IntCols[4:20])    #Finds the distance btween all colours in image and selected palette, creating a referance palette       
-        NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
+    if Palettised == True:
         
-        ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
+        IntCols = ParseCols(Cols) #Convert list of strings'#RRGGBB' to array containing [[RR, GG, BB], [RR, GG, BB]...]
+        ImgPalette = AdjustCols(Hue, Sat, Brightness, ImgPalette)   #Adjusts the image colour palette brightness
 
-        TempImg = [[IntCols[4 + ResizedTempImg[(i * TempW) + j]][n]
-                    for j in range(TempW)
-                    for n in range(3)]
-                    for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-        
-        NewImg = [[IntCols[4 + NewImgCols[(i * OutW) + j]][n]
-                    for j in range(OutW)
-                    for n in range(3)]
-                    for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
+        #Generate adjusted input image
 
-    elif Mode == 4: #80x192, 16 Col, not interlaced
+        AdjustedImg = [[[ImgPalette[ImgData[(i * ImgWidth) + j]][0], 
+                        ImgPalette[ImgData[(i * ImgWidth) + j]][1], 
+                        ImgPalette[ImgData[(i * ImgWidth) + j]][2]]
+                        for j in range(ImgWidth)]
+                        for i in range(ImgHeight)]  #Format image as [[[R,G,B], [R,G,B]...[R,G,B]], [[R,G,B], [R,G,B]...[R,G,B]]...]
 
-        ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
 
-        RefPalette = CalcColDist(ImgPalette, IntCols[20:36])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
-        NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
-        
-        ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
+        ShrunkImg = [[0,0,0]]
 
-        TempImg = [[IntCols[20 + ResizedTempImg[(i * TempW) + j]][n]
-                    for j in range(TempW)
-                    for n in range(3)]
-                    for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-        
-        NewImg = [[IntCols[20 + NewImgCols[(i * OutW) + j]][n]
-                    for j in range(OutW)
-                    for n in range(3)]
-                    for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
-        
+        TempImg = [[0,0,0]]
 
-    png.from_array(TempImg, 'RGB').save("temp.png")
+        NewImg = [[0,0,0]]
 
-    png.from_array(AdjustedImg, 'RGB').save("temp2.png")
+        if Mode == 0:   #160x96, not interlaced
 
-    png.from_array(NewImg, 'RGB', info={'width':int(len(NewImg[0])/3)}).save("OutImg.png")
+            ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)    
+            RefPalette = CalcColDist(ImgPalette, IntCols[0:4])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
+            NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
+            
+            ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 4, 4, OutW, OutH)
+
+            TempImg = [[[IntCols[ResizedTempImg[(i*TempW) + j]][0], 
+                         IntCols[ResizedTempImg[(i*TempW) + j]][1], 
+                         IntCols[ResizedTempImg[(i*TempW) + j]][2]]
+                         for j in range(TempW)]
+                         for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
+            NewImg = [[[IntCols[NewImgCols[(i*OutW) + j]][0], 
+                         IntCols[NewImgCols[(i*OutW) + j]][1], 
+                         IntCols[NewImgCols[(i*OutW) + j]][2]]
+                         for j in range(OutW)]
+                         for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
+
+        elif Mode == 2: #80x192, 16 Lum, not interlaced
+
+            ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
+
+            RefPalette = CalcColDist(ImgPalette, IntCols[4:20])    #Finds the distance btween all colours in image and selected palette, creating a referance palette       
+            NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
+            
+            ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
+
+            TempImg = [[[IntCols[4 + ResizedTempImg[(i * TempW) + j]][0], 
+                         IntCols[4 + ResizedTempImg[(i * TempW) + j]][1], 
+                         IntCols[4 + ResizedTempImg[(i * TempW) + j]][2]]
+                        for j in range(TempW)]
+                        for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
+            
+            NewImg = [[[IntCols[4 + NewImgCols[(i * OutW) + j]][0], 
+                        IntCols[4 + NewImgCols[(i * OutW) + j]][1], 
+                        IntCols[4 + NewImgCols[(i * OutW) + j]][2]] 
+                        for j in range(OutW)]
+                        for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
+
+        elif Mode == 4: #80x192, 16 Col, not interlaced
+
+            ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
+
+            RefPalette = CalcColDist(ImgPalette, IntCols[20:36])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
+            NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
+            
+            ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
+
+            TempImg = [[[IntCols[20 + ResizedTempImg[(i * TempW) + j]][0], 
+                         IntCols[20 + ResizedTempImg[(i * TempW) + j]][1], 
+                         IntCols[20 + ResizedTempImg[(i * TempW) + j]][2]]
+                        for j in range(TempW)]
+                        for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
+            
+            NewImg = [[[IntCols[20 + NewImgCols[(i * OutW) + j]][0], 
+                        IntCols[20 + NewImgCols[(i * OutW) + j]][1], 
+                        IntCols[20 + NewImgCols[(i * OutW) + j]][2]] 
+                        for j in range(OutW)]
+                        for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
+            
+
+        OutViewerPNG = Image.fromarray(np.array(TempImg).astype(np.uint8), 'RGB')
+        OutViewer = io.BytesIO()
+        OutViewerPNG.save(OutViewer, format="PNG")
+        window["OutView"].update(data=OutViewer.getvalue())
+
+
+        AdjustedImgPNG = Image.fromarray(np.array(AdjustedImg).astype(np.uint8), mode = 'RGB' )
+        InViewer = io.BytesIO()
+        AdjustedImgPNG.save(InViewer, format="PNG")
+        window["-IN_IMG-"].update(data = InViewer.getvalue())
+
+        #NewImgPNG = Image.fromarray(np.array(NewImg).astype(np.uint8), 'RGB')
 
     return 0
 
-temp = [[0]]
-png.from_array(temp, 'L').save("temp.png")
-png.from_array(temp, 'L').save("temp2.png")
+
 gui.theme("Topanga")
 
 FilePicker = [  #Box @ top of screen to browse for input image
@@ -367,7 +395,7 @@ FilePicker = [  #Box @ top of screen to browse for input image
 ]
 
 ImagePreview = [    #Show input image with filename
-    [gui.Image( key = "-IN_IMG-", size=(256,256), source="temp2.png")],
+    [gui.Image( key = "-IN_IMG-", size=(256,256))],
     [gui.Frame(layout=[
                 
                 [gui.Text("Hue", expand_x=True), 
@@ -460,7 +488,7 @@ ManualColours_16Lum = [
 ]
 
 Output_Viewer = [
-    [gui.Image(source="temp.png", key="OutView", size =(256,256))],
+    [gui.Image(key="OutView", size =(256,256))],
 ]
 
 OutputDimensions = [
@@ -805,13 +833,10 @@ while True:
                     *Vals
                     )
 
-    window["OutView"].update("temp.png")
-    window["-IN_IMG-"].update("temp2.png")
+    #window["OutView"].update("temp.png")
+
 
     window.refresh()
 
-os.remove("temp.png")
-os.remove("temp2.png")
-os.remove("OutImg.png")
 window.close()
 
