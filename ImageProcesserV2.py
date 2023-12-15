@@ -117,6 +117,24 @@ def HueValPick_Window():
 
     return [Hues, Vals]
 
+def Export(Img, Path, img, asm, dlist):
+
+    if img:
+        try:
+            Img.save(Path+"Converted.png")
+        except:
+            gui.popup_error("Error saving file >:3")
+        
+    if asm:
+    
+        return 0
+
+    if dlist:
+
+        return 0
+
+    return 0
+
 def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightness, *Cols):
 
     def ParseCols(ColArray):
@@ -258,8 +276,6 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
     
     InputImg = Image.open(Path)
 
-    ImgBounds = InputImg.getbbox()
-
     ImgWidth, ImgHeight = InputImg.size
     ImgData = list(InputImg.getdata())
 
@@ -377,9 +393,9 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         AdjustedImgPNG.save(InViewer, format="PNG")
         window["-IN_IMG-"].update(data = InViewer.getvalue())
 
-        #NewImgPNG = Image.fromarray(np.array(NewImg).astype(np.uint8), 'RGB')
+        NewImgPNG = Image.fromarray(np.array(NewImg).astype(np.uint8), 'RGB')
 
-    return 0
+    return NewImgPNG
 
 
 gui.theme("Topanga")
@@ -534,6 +550,18 @@ OutputDimensions = [
 
 ]
 
+ExportButton = gui.Frame(layout =[
+                [gui.Checkbox("Image?", key="Img?"),
+                gui.Checkbox(".asm?", key="asm?"),
+                gui.Checkbox("Display List?", key="DList?")],
+                
+                [gui.Text("Save path:"), gui.Input('', enable_events=False, expand_x=True, key="SaveLocation")],
+                [gui.Button("Export")],
+                ], 
+                title="Save Options",
+                vertical_alignment='top',
+                relief='groove',)
+
 Layout = [
     [FilePicker],
     [gui.HorizontalSeparator()],
@@ -566,9 +594,11 @@ Layout = [
                     relief = 'groove',
                     vertical_alignment = 'top',
                     expand_x=True
-                    )
+                    ),
+                    ExportButton
                 ],
-                [gui.Frame(
+                [
+                gui.Frame(
                     title = 'Manual Colour Picker',
                     layout = [
                         [gui.Column(ManualColours_4, vertical_alignment= 'top', key = "ManCols-4", visible=False),
@@ -578,8 +608,9 @@ Layout = [
                     relief = 'groove',
                     key = "ManualColourBox",
                     visible=False,
-                    expand_x = True
-                )],
+                    expand_x = False
+                )
+                ],
                 ],
                 vertical_alignment = 'top',
                 )
@@ -587,8 +618,7 @@ Layout = [
         ])],
     ]
 
-
-window = gui.Window("Atari 8-Bit Image Converter", Layout, resizable= True, icon='Icon.ico')
+window = gui.Window("Atari 8-Bit Image Converter", Layout, resizable= True, icon='D:\Code\Atari\Projects\ImageConverter\Icon.ico', titlebar_icon='D:\Code\Atari\Projects\ImageConverter\Icon.ico')
 
 FilePath = None
 Mode = 0
@@ -610,7 +640,8 @@ while True:
 
     OutWidth = values["OutViewWidth"]
     OutHeight = values["OutViewHeight"]
-
+    ExportPath = values["SaveLocation"]
+    ExportImg = None
 
     if (event == "-PICK_IMG-"):     #Check for file picked
         FilePath = values["-PICK_IMG-"]
@@ -822,25 +853,33 @@ while True:
 
     if FilePath != None and event != None and event != "About":
 
-        ImgProcessor(
-                    FilePath, 
-                    Mode, 
-                    values["-ManualCol-"],
-                    int(OutWidth),
-                    int(OutHeight),
-                    Width,
-                    Res,
-                    HueAdjust,
-                    SatAdjust,
-                    BrightAdjust,
-                    window["4_C0"].ButtonColor[1], 
-                    window["4_C1"].ButtonColor[1], 
-                    window["4_C2"].ButtonColor[1], 
-                    window["4_C3"].ButtonColor[1],
-                    *Hues,
-                    *Vals
-                    )
+        ExportImg = ImgProcessor(
+                        FilePath, 
+                        Mode, 
+                        values["-ManualCol-"],
+                        int(OutWidth),
+                        int(OutHeight),
+                        Width,
+                        Res,
+                        HueAdjust,
+                        SatAdjust,
+                        BrightAdjust,
+                        window["4_C0"].ButtonColor[1], 
+                        window["4_C1"].ButtonColor[1], 
+                        window["4_C2"].ButtonColor[1], 
+                        window["4_C3"].ButtonColor[1],
+                        *Hues,
+                        *Vals
+                        )
 
+
+    if event == "Export" and ExportPath != None and ExportImg != None:
+        
+        Export(ExportImg, 
+                ExportPath,
+                values["Img?"],
+                values["asm?"],
+                values["DList?"])
 
     window.refresh()
 
