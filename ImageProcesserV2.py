@@ -588,7 +588,7 @@ Layout = [
     ]
 
 
-window = gui.Window("Atari 8-Bit Image Converter", Layout, resizable= True)
+window = gui.Window("Atari 8-Bit Image Converter", Layout, resizable= True, icon='Icon.ico')
 
 FilePath = None
 Mode = 0
@@ -840,8 +840,6 @@ while True:
                     *Hues,
                     *Vals
                     )
-
-    #window["OutView"].update("temp.png")
 
 
     window.refresh()
