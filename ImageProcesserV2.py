@@ -260,8 +260,7 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
     ImgBounds = InputImg.getbbox()
 
-    ImgWidth = ImgBounds[2]
-    ImgHeight = ImgBounds[3]
+    ImgWidth, ImgHeight = InputImg.size
     ImgData = list(InputImg.getdata())
 
     Palettised = False
@@ -812,14 +811,23 @@ while True:
                 Hues = Temp_Hues
                 Vals = TempVals
 
-    if FilePath != None and event != None:
+    if event == "About":
+
+        gui.popup("Atari 8-Bit Image Converter V0.5\n\n"+
+                  "Code: aTan\n\n"+
+                  "Special thanks to:\n"+
+                  "rapidtables.com: HSV/RGB algorithms\n"+
+                  "Wikipedia: HSV/RGB algorithms\n"+
+                  "The folks @ Altirra: Atari colour palettes")
+
+    if FilePath != None and event != None and event != "About":
 
         ImgProcessor(
                     FilePath, 
                     Mode, 
                     values["-ManualCol-"],
-                    OutWidth,
-                    OutHeight,
+                    int(OutWidth),
+                    int(OutHeight),
                     Width,
                     Res,
                     HueAdjust,
