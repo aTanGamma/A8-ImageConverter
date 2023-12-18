@@ -101,7 +101,11 @@ int* ColourDistance(int* ImgPalette,
 }
 
 
-int* ResizeImage(int* Img, int InW, int InH, int OutW, int OutH){
+int* ResizeImage(int* Img, 
+                 int InW, 
+                 int InH, 
+                 int OutW, 
+                 int OutH){
 
     double xPxStep = (double)InW / (double)OutW;
     double yPxStep = (double)InH / (double)OutH;    
@@ -119,4 +123,117 @@ int* ResizeImage(int* Img, int InW, int InH, int OutW, int OutH){
 
 
     return Resized;
+}
+
+int* AdjustColours(int* Palette,
+                   int Len,
+                   int H,
+                   int S,
+                   int V){
+
+    int* Adjusted = (int*) malloc(Len * sizeof(int));
+
+    double Hue, R, G, B, Saturation, Value, c, x, m, _R, _G, _B;
+
+    for (int Entry = 0; Entry < Len; Entry += 3){
+
+        R = Palette[Entry + 0] / 255.0;
+        G = Palette[Entry + 1] / 255.0;
+        B = Palette[Entry + 2] / 255.0;
+
+        //Convert to HSV
+
+        double MaxByte = fmax(R, fmax(G, B));
+        double MinByte = fmin(R, fmin(G, B));
+
+        double Diff = MaxByte - MinByte;
+
+        if (Diff == 0){ //Calculate Hue
+
+            Hue = 0;
+
+        }else if (MaxByte == R){
+
+            Hue = fmod(60*fmod( (G - B)/Diff, 6) + H, 360);
+
+        }else if(MaxByte == G){
+
+            Hue = fmod((60*((B - R)/Diff + 2) + H), 360);
+
+        }else{
+
+            Hue = fmod((60*((R - G)/Diff + 4) + H), 360);
+
+        }
+
+        if (MaxByte == 0){  //Calculate Saturation
+
+            Saturation = 0;
+
+        }else{
+
+            Saturation = (Diff / MaxByte) * pow(2, S/50.0);
+            
+            
+            if (Saturation > 1){
+                Saturation = 1;
+            }
+
+        }
+
+        Value = MaxByte * pow(2, V/50.0); //Calculate brightness
+
+        if (Value > 1){
+            Value = 1;
+        }
+
+        //Convert back to RGB
+
+        c = Saturation * Value;
+        x = c * (1 - fabs(fmod((Hue/60.0) , 2) - 1));
+        m = Value - c;
+
+        if(Hue < 60){
+            _R = c;
+            _G = x;
+            _B = 0;
+
+        }else if(Hue < 120){
+            _R = x;
+            _G = c;
+            _B = 0;
+
+        }else if(Hue < 180){
+            _R = 0;
+            _G = c;
+            _B = x;
+
+        }else if(Hue < 240){
+            _R = 0;
+            _G = x;
+            _B = c;
+
+        }else if(Hue < 300){
+            _R = x;
+            _G = 0;
+            _B = c;
+
+        }else{
+            _R = c;
+            _G = 0;
+            _B = x;
+        }
+
+        R = (_R + m) * 255;
+        G = (_G + m) * 255;
+        B = (_B + m) * 255;
+
+        Adjusted[Entry + 0] = (int)((_R + m) * 255);
+        Adjusted[Entry + 1] = (int)((_G + m) * 255);
+        Adjusted[Entry + 2] = (int)((_B + m) * 255);
+
+    }
+
+    return Adjusted;
+
 }

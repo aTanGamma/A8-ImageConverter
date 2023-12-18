@@ -200,7 +200,7 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
         ColsHSV = list()
         AdjustedRGB = list()
-
+        '''
         for i in range(len(ImgReds)):   #Convert to HSV
         
             MostMax = max(ImgReds[i], ImgGreens[i], ImgBlues[i])
@@ -269,6 +269,17 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
             b = int((_b + m) * 255)
 
             AdjustedRGB.append((r,g,b))
+        '''
+        flatCols = [rgb for Col in ImgCols[0] for rgb in Col]
+        
+        flatColArray = (c_int * len(flatCols))()
+        flatColArray[:] = [*flatCols]
+
+        ImgProcesses.AdjustColours.restype = POINTER(c_int * (len(flatCols)))
+        AdjustedRGB = np.asarray(ImgProcesses.AdjustColours(flatColArray, len(flatColArray), int(H), int(S), int(V)).contents)
+        AdjustedRGB.shape = (len(ImgCols[0]), 3)
+
+        #print(AdjustedRGB, '\n\n', tAdjustedRGB)
 
 
         return AdjustedRGB
@@ -309,12 +320,18 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
         ImgPalette = AdjustCols(Hue, Sat, Brightness, ImgPalette)   #Adjusts the image colour palette brightness
 
-        #Generate adjusted input image        
-        AdjustedImg = [[[ImgPalette[ImgData[(i * ImgWidth) + j]][0], 
-                        ImgPalette[ImgData[(i * ImgWidth) + j]][1], 
-                        ImgPalette[ImgData[(i * ImgWidth) + j]][2]]
-                        for j in range(ImgWidth)]
-                        for i in range(ImgHeight)]  #Format image as [[[R,G,B], [R,G,B]...[R,G,B]], [[R,G,B], [R,G,B]...[R,G,B]]...]
+
+        flatCols = np.array([N for a in ImgPalette for N in a], dtype=np.uint)
+        IntColArray = (c_uint * len(flatCols))()
+        IntColArray[:] = flatCols
+
+        TempAdjImg = np.array(ImgData, dtype=np.uint)
+        ImgArrayPtr = (c_uint * len(TempAdjImg))()
+        ImgArrayPtr[:] = TempAdjImg
+
+        ImgProcesses.FormatImg.restype = POINTER(c_uint * (ImgWidth * ImgHeight * 3))
+        AdjustedImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, ImgWidth, ImgHeight, 0).contents).astype(np.uint8)
+        AdjustedImg.shape = (ImgHeight, ImgWidth, 3)
 
         ShrunkImg = [[0,0,0]]
 
