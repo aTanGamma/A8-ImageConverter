@@ -4,7 +4,8 @@ import os.path
 import os
 from PIL import Image
 import io
-
+from ctypes import *
+import time
 
 
 
@@ -141,36 +142,36 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
         PickedCols = [(Cols[i].split('#')[1])for i in range(len(Cols))]
 
-        RGBPicked = [(int('0x'+PickedCols[i][0:2], 16), int('0x'+PickedCols[i][2:4], 16), int('0x'+PickedCols[i][4:6], 16))for i in range(len(PickedCols))]
+        RGBPicked = [(int('0x'+PickedCols[i][0:2], 16), 
+                      int('0x'+PickedCols[i][2:4], 16), 
+                      int('0x'+PickedCols[i][4:6], 16))
+                      for i in range(len(PickedCols))]
 
         return RGBPicked
     
     def CalcColDist(ImgPalette, ColPalette):
-        RGBDist = [tuple(np.sqrt(sum([(ImgPalette[ImgCol][Val] - ColPalette[PalCol][Val]) **2 
-                                      for Val in range(3)]))
-                        for PalCol in range(len(ColPalette))) 
-                        for ImgCol in range(len(ImgPalette))]
+        
+        flatUsrCols = np.array([N for a in ColPalette for N in a], dtype=np.uint)
+        UsrColArray = (c_uint * len(flatUsrCols))()
+        UsrColArray[:] = flatUsrCols
 
-        RefPalette = [RGBDist[i].index(min(RGBDist[i])) for i in range(len(RGBDist))]
-        return RefPalette
+        flatImgCols = np.array([N for a in ImgPalette for N in a], dtype=np.uint)
+        ImgColArray = (c_uint * len(flatImgCols))()
+        ImgColArray[:] = flatImgCols
+        
+        ImgProcesses.ColourDistance.restype = POINTER(c_uint * (len(flatImgCols)//3))
+        
+        return np.ctypeslib.as_array(ImgProcesses.ColourDistance(ImgColArray, UsrColArray, len(ImgColArray), len(UsrColArray)).contents).tolist()
 
     def ImgResizer(Img, ImgW, ImgH, OutW, OutH):   #Takes image formatted as [[R...G...B], ...[R...G...B...]] and shrinks it to desired resolution
 
-        xPxStep = ImgW / OutW
+        ImgArray = (c_uint * len(Img))()
+        ImgArray[:] = Img
 
-        yPxStep = ImgH / OutH
+        ImgProcesses.ResizeImage.restype = POINTER(c_int * (OutW * OutH))
+        Resized = np.asarray(ImgProcesses.ResizeImage(ImgArray, ImgW, ImgH, OutW, OutH).contents).tolist()
 
-        ImgArray = [[Img[Row*ImgW + Col]for Col in range(ImgW)] for Row in range(ImgH)]
-
-
-
-        SmallImgArray = [[ImgArray[int(np.floor(Row * yPxStep))][int(np.floor(Col * xPxStep))] 
-                          for Col in range(OutW)] 
-                          for Row in range(OutH)]
-
-        FlatSmallImg = [El for List in SmallImgArray for El in List]
-
-        return FlatSmallImg
+        return Resized
 
     def ImgScaler(Img, Sx, Sy, ImgW, ImgH):
 
@@ -274,6 +275,8 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
     #Does all the image processing
     
+    ImgProcesses = CDLL("D:\Code\Atari\Projects\ImageConverter\ImgProcesses.so")
+
     InputImg = Image.open(Path)
 
     ImgWidth, ImgHeight = InputImg.size
@@ -302,17 +305,16 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
     if Palettised == True:
         
-        IntCols = ParseCols(Cols) #Convert list of strings'#RRGGBB' to array containing [[RR, GG, BB], [RR, GG, BB]...]
+        IntCols = ParseCols(Cols) #Convert list of strings'#RRGGBB' to flat list containing [RR, GG, BB, RR, GG, BB ...]
+
         ImgPalette = AdjustCols(Hue, Sat, Brightness, ImgPalette)   #Adjusts the image colour palette brightness
 
-        #Generate adjusted input image
-
+        #Generate adjusted input image        
         AdjustedImg = [[[ImgPalette[ImgData[(i * ImgWidth) + j]][0], 
                         ImgPalette[ImgData[(i * ImgWidth) + j]][1], 
                         ImgPalette[ImgData[(i * ImgWidth) + j]][2]]
                         for j in range(ImgWidth)]
                         for i in range(ImgHeight)]  #Format image as [[[R,G,B], [R,G,B]...[R,G,B]], [[R,G,B], [R,G,B]...[R,G,B]]...]
-
 
         ShrunkImg = [[0,0,0]]
 
@@ -322,67 +324,88 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
         if Mode == 0:   #160x96, not interlaced
 
-            ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)    
+            ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
             RefPalette = CalcColDist(ImgPalette, IntCols[0:4])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
             NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
-            
             ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 4, 4, OutW, OutH)
 
-            TempImg = [[[IntCols[ResizedTempImg[(i*TempW) + j]][0], 
-                         IntCols[ResizedTempImg[(i*TempW) + j]][1], 
-                         IntCols[ResizedTempImg[(i*TempW) + j]][2]]
-                         for j in range(TempW)]
-                         for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-            NewImg = [[[IntCols[NewImgCols[(i*OutW) + j]][0], 
-                         IntCols[NewImgCols[(i*OutW) + j]][1], 
-                         IntCols[NewImgCols[(i*OutW) + j]][2]]
-                         for j in range(OutW)]
-                         for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
 
+            flatCols = np.array([N for a in IntCols for N in a], dtype=np.uint)
+            IntColArray = (c_uint * len(flatCols))()
+            IntColArray[:] = flatCols
+
+            TempIntImg = np.array(ResizedTempImg, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(TempIntImg))()
+            ImgArrayPtr[:] = TempIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
+            TempImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 0).contents).astype(np.uint8)
+            TempImg.shape = (TempH, TempW, 3) 
+
+            OutIntImg = np.array(NewImgCols, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(OutIntImg))()
+            ImgArrayPtr[:] = OutIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
+            NewImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 0).contents).astype(np.uint8)
+            NewImg.shape = (OutH, OutW, 3) 
+   
+                         
         elif Mode == 2: #80x192, 16 Lum, not interlaced
 
             ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
-
             RefPalette = CalcColDist(ImgPalette, IntCols[4:20])    #Finds the distance btween all colours in image and selected palette, creating a referance palette       
             NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
-            
             ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
 
-            TempImg = [[[IntCols[4 + ResizedTempImg[(i * TempW) + j]][0], 
-                         IntCols[4 + ResizedTempImg[(i * TempW) + j]][1], 
-                         IntCols[4 + ResizedTempImg[(i * TempW) + j]][2]]
-                        for j in range(TempW)]
-                        for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-            
-            NewImg = [[[IntCols[4 + NewImgCols[(i * OutW) + j]][0], 
-                        IntCols[4 + NewImgCols[(i * OutW) + j]][1], 
-                        IntCols[4 + NewImgCols[(i * OutW) + j]][2]] 
-                        for j in range(OutW)]
-                        for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
+            flatCols = np.array([N for a in IntCols for N in a], dtype=np.uint)
+            IntColArray = (c_uint * len(flatCols))()
+            IntColArray[:] = flatCols
 
+            TempIntImg = np.array(ResizedTempImg, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(TempIntImg))()
+            ImgArrayPtr[:] = TempIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
+            TempImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 2).contents).astype(np.uint8)
+            TempImg.shape = (TempH, TempW, 3) 
+
+            OutIntImg = np.array(NewImgCols, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(OutIntImg))()
+            ImgArrayPtr[:] = OutIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
+            NewImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 2).contents).astype(np.uint8)
+            NewImg.shape = (OutH, OutW, 3)
+                        
         elif Mode == 4: #80x192, 16 Col, not interlaced
 
             ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
-
             RefPalette = CalcColDist(ImgPalette, IntCols[20:36])    #Finds the distance btween all colours in image and selected palette, creating a referance palette
             NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
-            
             ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 8, 2, OutW, OutH)
 
-            TempImg = [[[IntCols[20 + ResizedTempImg[(i * TempW) + j]][0], 
-                         IntCols[20 + ResizedTempImg[(i * TempW) + j]][1], 
-                         IntCols[20 + ResizedTempImg[(i * TempW) + j]][2]]
-                        for j in range(TempW)]
-                        for i in range(TempH)]  #Format image as [R...G...B...], [R...G...B...]
-            
-            NewImg = [[[IntCols[20 + NewImgCols[(i * OutW) + j]][0], 
-                        IntCols[20 + NewImgCols[(i * OutW) + j]][1], 
-                        IntCols[20 + NewImgCols[(i * OutW) + j]][2]] 
-                        for j in range(OutW)]
-                        for i in range(OutH)]  #Format image as [R...G...B...], [R...G...B...]
-            
+            flatCols = np.array([N for a in IntCols for N in a], dtype=np.uint)
+            IntColArray = (c_uint * len(flatCols))()
+            IntColArray[:] = flatCols
 
-        OutViewerPNG = Image.fromarray(np.array(TempImg).astype(np.uint8), 'RGB')
+            TempIntImg = np.array(ResizedTempImg, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(TempIntImg))()
+            ImgArrayPtr[:] = TempIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
+            TempImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 4).contents).astype(np.uint8)
+            TempImg.shape = (TempH, TempW, 3) 
+
+            OutIntImg = np.array(NewImgCols, dtype=np.uint)
+            ImgArrayPtr = (c_uint * len(OutIntImg))()
+            ImgArrayPtr[:] = OutIntImg
+
+            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
+            NewImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 4).contents).astype(np.uint8)
+            NewImg.shape = (OutH, OutW, 3)
+        
+        OutViewerPNG = Image.fromarray(TempImg, 'RGB')
         OutViewer = io.BytesIO()
         OutViewerPNG.save(OutViewer, format="PNG")
         window["OutView"].update(data=OutViewer.getvalue())
@@ -393,7 +416,7 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         AdjustedImgPNG.save(InViewer, format="PNG")
         window["-IN_IMG-"].update(data = InViewer.getvalue())
 
-        NewImgPNG = Image.fromarray(np.array(NewImg).astype(np.uint8), 'RGB')
+        NewImgPNG = Image.fromarray(NewImg, 'RGB')
 
     return NewImgPNG
 
