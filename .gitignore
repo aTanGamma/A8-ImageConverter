@@ -1,1 +1,4 @@
 *.png
+*.so
+*.bat
+Test.py
