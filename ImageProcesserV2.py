@@ -244,7 +244,6 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
         ImgPalette = AdjustCols(Hue, Sat, Brightness, ImgPalette)   #Adjusts the image colour palette brightness
 
-
         #flatCols = np.array([N for a in ImgPalette for N in a], dtype=np.uint)
         IntColArray = (c_uint * len(ImgPalette))()
         IntColArray[:] = ImgPalette
@@ -253,16 +252,13 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         ImgArrayPtr = (c_uint * len(TempAdjImg))()
         ImgArrayPtr[:] = TempAdjImg
 
-        ImgProcesses.FormatImg.restype = POINTER(c_uint * (ImgWidth * ImgHeight * 3))
-        AdjustedImg_P = ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, ImgWidth, ImgHeight, 0)
-        AdjustedImg = deepcopy(np.ctypeslib.as_array(AdjustedImg_P.contents).astype(np.uint8))
+        t_AdjustedImg = (c_uint8 * (ImgWidth*ImgHeight*3))()
+        ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_AdjustedImg), ImgWidth, ImgHeight, 0)
+        AdjustedImg = np.array(t_AdjustedImg)
         AdjustedImg.shape = (ImgHeight, ImgWidth, 3)
-        ImgProcesses.FreeMem(AdjustedImg_P)
-
+        
         ShrunkImg = [[0,0,0]]
-
         TempImg = [[0,0,0]]
-
         NewImg = [[0,0,0]]
 
         if Mode == 0:   #160x96, not interlaced
@@ -279,22 +275,20 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
             ImgArrayPtr = (c_uint * len(TempIntImg))()
             ImgArrayPtr[:] = TempIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
-            C_TempImg = ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 0)
-            TempImg = deepcopy(np.asanyarray(C_TempImg.contents).astype(np.uint8))
+            t_TempImg = (c_uint8 * (TempW*TempH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_TempImg), TempW, TempH, 0)
+            TempImg = np.array(t_TempImg)
             TempImg.shape = (TempH, TempW, 3)
-            ImgProcesses.FreeMem(C_TempImg) 
 
             OutIntImg = np.array(NewImgCols, dtype=np.uint)
             ImgArrayPtr = (c_uint * len(OutIntImg))()
             ImgArrayPtr[:] = OutIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
-            C_NewImg = ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 0)
-            NewImg = deepcopy(np.ctypeslib.as_array(C_NewImg.contents).astype(np.uint8))
-            NewImg.shape = (OutH, OutW, 3) 
-            ImgProcesses.FreeMem(C_NewImg)
-   
+            t_NewImg = (c_uint8 * (OutW*OutH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_NewImg), OutW, OutH, 0)
+            NewImg = np.array(t_NewImg)
+            NewImg.shape = (OutH, OutW, 3)
+
                          
         elif Mode == 2: #80x192, 16 Lum, not interlaced
 
@@ -310,18 +304,21 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
             ImgArrayPtr = (c_uint * len(TempIntImg))()
             ImgArrayPtr[:] = TempIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
-            TempImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 2).contents).astype(np.uint8)
-            TempImg.shape = (TempH, TempW, 3) 
+            t_TempImg = (c_uint8 * (TempW*TempH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_TempImg), TempW, TempH, 2)
+            TempImg = np.array(t_TempImg)
+            TempImg.shape = (TempH, TempW, 3)
 
             OutIntImg = np.array(NewImgCols, dtype=np.uint)
             ImgArrayPtr = (c_uint * len(OutIntImg))()
             ImgArrayPtr[:] = OutIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
-            NewImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 2).contents).astype(np.uint8)
+            t_NewImg = (c_uint8 * (OutW*OutH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_NewImg), OutW, OutH, 2)
+            NewImg = np.array(t_NewImg)
             NewImg.shape = (OutH, OutW, 3)
-                        
+
+                     
         elif Mode == 4: #80x192, 16 Col, not interlaced
 
             ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
@@ -336,18 +333,21 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
             ImgArrayPtr = (c_uint * len(TempIntImg))()
             ImgArrayPtr[:] = TempIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (TempW * TempH * 3))
-            TempImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, TempW, TempH, 4).contents).astype(np.uint8)
-            TempImg.shape = (TempH, TempW, 3) 
+            t_TempImg = (c_uint8 * (TempW*TempH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_TempImg), TempW, TempH, 4)
+            TempImg = np.array(t_TempImg)
+            TempImg.shape = (TempH, TempW, 3)
 
             OutIntImg = np.array(NewImgCols, dtype=np.uint)
             ImgArrayPtr = (c_uint * len(OutIntImg))()
             ImgArrayPtr[:] = OutIntImg
 
-            ImgProcesses.FormatImg.restype = POINTER(c_uint * (OutW * OutH * 3))
-            NewImg = np.ctypeslib.as_array(ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, OutW, OutH, 4).contents).astype(np.uint8)
+            t_NewImg = (c_uint8 * (OutW*OutH*3))()
+            ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_NewImg), OutW, OutH, 4)
+            NewImg = np.array(t_NewImg)
             NewImg.shape = (OutH, OutW, 3)
-        
+            
+            
         OutViewerPNG = Image.fromarray(TempImg, 'RGB')
         with io.BytesIO() as OutViewer:
             OutViewerPNG.save(OutViewer, format="PNG")

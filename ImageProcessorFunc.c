@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <math.h>
 
-int* FormatImg(int *Cols, 
+void FormatImg(int *Cols, 
                int *Img, 
+               int *Out,
                int W, 
                int H, 
                int Mode){
 
-    int *Out = (int*) malloc(W*H*3 * sizeof(int));
+    //int *Out = (int*) malloc(W*H*3 * sizeof(int));
 
     switch(Mode){
 
@@ -51,7 +52,8 @@ int* FormatImg(int *Cols,
             }
             break;
     }
-    return Out;
+
+    return;
 }
 
 
@@ -137,6 +139,7 @@ int* AdjustColours(int* Palette,
     double Hue, R, G, B, Saturation, Value, c, x, m, _R, _G, _B, MaxByte, MinByte, Diff;
 
     for (int Entry = 0; Entry < Len; Entry += 3){
+
 
         R = Palette[Entry + 0] / 255.0;
         G = Palette[Entry + 1] / 255.0;
@@ -275,6 +278,18 @@ int* ParseColours(char* Colour,
 void FreeMem(int* P){
 
     free(P);
+
+    return;
+}
+
+
+void Test(int* Array, int Len){
+
+    for (int i = 0; i < Len; i++){
+
+        Array[i] = i * i;
+
+    }
 
     return;
 }
