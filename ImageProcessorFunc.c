@@ -96,6 +96,7 @@ int* ColourDistance(int* ImgPalette,
     
     }
 
+    free(RawDist);
     return Out;
 
 }
@@ -133,7 +134,7 @@ int* AdjustColours(int* Palette,
 
     int* Adjusted = (int*) malloc(Len * sizeof(int));
 
-    double Hue, R, G, B, Saturation, Value, c, x, m, _R, _G, _B;
+    double Hue, R, G, B, Saturation, Value, c, x, m, _R, _G, _B, MaxByte, MinByte, Diff;
 
     for (int Entry = 0; Entry < Len; Entry += 3){
 
@@ -143,10 +144,10 @@ int* AdjustColours(int* Palette,
 
         //Convert to HSV
 
-        double MaxByte = fmax(R, fmax(G, B));
-        double MinByte = fmin(R, fmin(G, B));
+        MaxByte = fmax(R, fmax(G, B));
+        MinByte = fmin(R, fmin(G, B));
 
-        double Diff = MaxByte - MinByte;
+        Diff = MaxByte - MinByte;
 
         if (Diff == 0){ //Calculate Hue
 
@@ -224,10 +225,6 @@ int* AdjustColours(int* Palette,
             _B = x;
         }
 
-        R = (_R + m) * 255;
-        G = (_G + m) * 255;
-        B = (_B + m) * 255;
-
         Adjusted[Entry + 0] = (int)((_R + m) * 255);
         Adjusted[Entry + 1] = (int)((_G + m) * 255);
         Adjusted[Entry + 2] = (int)((_B + m) * 255);
@@ -236,4 +233,48 @@ int* AdjustColours(int* Palette,
 
     return Adjusted;
 
+}
+
+
+int* ParseColours(char* Colour,
+                  int NoEntries,
+                  int LenEntry){
+
+    int* rgbOut = (int*) malloc(3 * NoEntries * sizeof(int));
+
+    char R[3], G[3], B[3];
+    int Red, Green, Blue; 
+
+    for (int Col = 0; Col < NoEntries * LenEntry * 2; Col += LenEntry*2 ){
+
+        R[0] = Colour[Col+2];
+        R[1] = Colour[Col+4];
+        R[2] = '\0';
+
+        G[0] = Colour[Col+6];
+        G[1] = Colour[Col+8];
+        G[2] = '\0';
+
+        B[0] = Colour[Col+10];
+        B[1] = Colour[Col+12];
+        B[2] = '\0';
+
+        Red = (int) strtol(R, NULL, 16);
+        Green = (int) strtol(G, NULL, 16);
+        Blue = (int) strtol(B, NULL, 16);
+
+        rgbOut[3 * Col / (LenEntry * 2) + 0] = Red;
+        rgbOut[3 * Col / (LenEntry * 2) + 1] = Green;
+        rgbOut[3 * Col / (LenEntry * 2) + 2] = Blue;
+
+    }
+
+    return rgbOut;
+}
+
+void FreeMem(int* P){
+
+    free(P);
+
+    return;
 }
