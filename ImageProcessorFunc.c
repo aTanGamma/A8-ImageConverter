@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 void FormatImg(int *Cols, 
                int *Img, 
-               int *Out,
+               unsigned char *Out,
                int W, 
                int H, 
                int Mode){
@@ -18,9 +19,13 @@ void FormatImg(int *Cols,
             for (int i = 0; i < H; i++){
                 for (int j = 0; j < W; j++){
 
-                    Out[3*i*W + 3*j + 0] = Cols[0 + (Img[i*W + j] * 3)];
-                    Out[3*i*W + 3*j + 1] = Cols[1 + (Img[i*W + j] * 3)];
-                    Out[3*i*W + 3*j + 2] = Cols[2 + (Img[i*W + j] * 3)];
+                    Out[3*(i*W + j) + 0] = Cols[0 + (Img[i*W + j] * 3)];
+                    Out[3*(i*W + j) + 1] = Cols[1 + (Img[i*W + j] * 3)];
+                    Out[3*(i*W + j) + 2] = Cols[2 + (Img[i*W + j] * 3)];
+
+                    //printf("%d\t%d\t%d\t%d\t%d\t%d\n", i, j, 3*i*W + 3*j, Out[3*i*W + 3*j + 0], Out[3*i*W + 3*j + 1], Out[3*i*W + 3*j + 2]);
+                    //printf("%d\t%d\t%d\n", i, j, 3*i*W + 3*j);
+
 
                 }
             }
@@ -57,32 +62,36 @@ void FormatImg(int *Cols,
 }
 
 
-int* ColourDistance(int* ImgPalette, 
+void ColourDistance(int* ImgPalette, 
                     int* UserPalette, 
+                    int* OutPalette,
                     int ImgPalLength, 
                     int UsrPalLength){
 
     int* RawDist = (int*) malloc(ImgPalLength * UsrPalLength * sizeof(int));
-    int* Out = (int*) malloc(ImgPalLength * UsrPalLength * sizeof(int) / 4);
+
+    double dR_Sq, dG_Sq, dB_Sq, Dist;
 
     for(int ImgCol = 0; ImgCol < ImgPalLength/3; ImgCol++){
         for(int UsrCol = 0; UsrCol < UsrPalLength/3; UsrCol++){
 
-            double dR_Sq = pow(ImgPalette[3*ImgCol + 0] - UserPalette[3*UsrCol + 0], 2);
-            double dG_Sq = pow(ImgPalette[3*ImgCol + 1] - UserPalette[3*UsrCol + 1], 2);
-            double dB_Sq = pow(ImgPalette[3*ImgCol + 2] - UserPalette[3*UsrCol + 2], 2);
+            dR_Sq = pow(ImgPalette[3*ImgCol + 0] - UserPalette[3*UsrCol + 0], 2);
+            dG_Sq = pow(ImgPalette[3*ImgCol + 1] - UserPalette[3*UsrCol + 1], 2);
+            dB_Sq = pow(ImgPalette[3*ImgCol + 2] - UserPalette[3*UsrCol + 2], 2);
 
-            double Dist = sqrt(dR_Sq + dG_Sq + dB_Sq) * 1000;
+            Dist = sqrt(dR_Sq + dG_Sq + dB_Sq) * 1000;
 
             RawDist[ImgCol*UsrPalLength + UsrCol] = (unsigned int)Dist;
 
         }
     }
 
+    int MinVal, index;
+
     for(int ImgCol = 0; ImgCol < ImgPalLength/3; ImgCol++){
 
-        int MinVal = RawDist[ImgCol*UsrPalLength];
-        int index = 0;
+        MinVal = RawDist[ImgCol*UsrPalLength];
+        index = 0;
 
         for(int UsrCol = 1; UsrCol < UsrPalLength/3; UsrCol++){  
 
@@ -94,47 +103,45 @@ int* ColourDistance(int* ImgPalette,
             }
         }
     
-        Out[ImgCol] = index;
+        OutPalette[ImgCol] = index;
     
     }
 
     free(RawDist);
-    return Out;
+    return;
 
 }
 
 
-int* ResizeImage(int* Img, 
+void ResizeImage(int* Img, 
                  int InW, 
                  int InH, 
+                 int* Resized,
                  int OutW, 
                  int OutH){
 
     double xPxStep = (double)InW / (double)OutW;
     double yPxStep = (double)InH / (double)OutH;    
 
-    int* Resized = (int*) malloc(OutW * OutH * sizeof(int));
-
     for(int Row = 0; Row < OutH; Row++){
         for(int Px = 0; Px < OutW; Px++){
 
             Resized[Row*OutW + Px] = Img[(int)(InW*floor(Row*yPxStep) + Px*xPxStep)];
-
+            
         }
 
     }
 
 
-    return Resized;
+    return;
 }
 
-int* AdjustColours(int* Palette,
+void AdjustColours(int* Palette,
+                   int* Adjusted,
                    int Len,
                    int H,
                    int S,
                    int V){
-
-    int* Adjusted = (int*) malloc(Len * sizeof(int));
 
     double Hue, R, G, B, Saturation, Value, c, x, m, _R, _G, _B, MaxByte, MinByte, Diff;
 
@@ -162,11 +169,17 @@ int* AdjustColours(int* Palette,
 
         }else if(MaxByte == G){
 
-            Hue = fmod((60*((B - R)/Diff + 2) + H), 360);
+            Hue = fmod(60*((B - R)/Diff + 2) + H, 360);
 
-        }else{
+        }else if(MaxByte == B){
 
-            Hue = fmod((60*((R - G)/Diff + 4) + H), 360);
+            Hue = fmod(60*((R - G)/Diff + 4) + H, 360);
+
+        }
+
+        if(Hue < 0){
+
+            Hue += 360;
 
         }
 
@@ -221,7 +234,6 @@ int* AdjustColours(int* Palette,
             _R = x;
             _G = 0;
             _B = c;
-
         }else{
             _R = c;
             _G = 0;
@@ -234,16 +246,16 @@ int* AdjustColours(int* Palette,
 
     }
 
-    return Adjusted;
+    return;
 
 }
 
 
-int* ParseColours(char* Colour,
+void ParseColours(char* Colour,
+                  int* rgbOut,
                   int NoEntries,
                   int LenEntry){
 
-    int* rgbOut = (int*) malloc(3 * NoEntries * sizeof(int));
 
     char R[3], G[3], B[3];
     int Red, Green, Blue; 
@@ -272,7 +284,7 @@ int* ParseColours(char* Colour,
 
     }
 
-    return rgbOut;
+    return;
 }
 
 void FreeMem(int* P){
@@ -282,14 +294,44 @@ void FreeMem(int* P){
     return;
 }
 
+void ImageScaler(int* Image,
+                 int* Scaled,
+                 int ImgW,
+                 int ImgH,
+                 int Sx,
+                 int Sy){
 
-void Test(int* Array, int Len){
+    int* LineBuffer = (int*) malloc(ImgW * Sx * sizeof(int));   //Buffer for duplicating lines
+    int* ImgScaledX = (int*) malloc(ImgW * Sx * ImgH * sizeof(int));    //Intermediate buffer for image scaled in X
 
-    for (int i = 0; i < Len; i++){
+    for(int Row = 0; Row < ImgH; Row++){
+        for(int Px = 0; Px < ImgW; Px++){
+            for(int nX = 0; nX < Sx; nX++){
 
-        Array[i] = i * i;
+                ImgScaledX[Row*ImgW*Sx + Px*Sx + nX] = Image[Row*ImgW + Px];    //Duplicates pixel data Sx times
 
+            }
+        }
     }
 
+    for(int Row = 0; Row < ImgH; Row++){
+
+        for(int i = 0; i < ImgW*Sx; i++){
+            LineBuffer[i] = ImgScaledX[Row*ImgW*Sx + i];    //Copy line to line buffer
+        }
+
+        for(int LineCopy = 0; LineCopy < Sy; LineCopy++){
+            for(int i = 0; i < ImgW*Sx; i++){
+
+                Scaled[ImgW*Sx*(Row*Sy + LineCopy) + i] = LineBuffer[i];   //Copy line buffer to final image
+
+            }
+        }
+    }
+
+    free(LineBuffer);
+    free(ImgScaledX);
+
     return;
+
 }

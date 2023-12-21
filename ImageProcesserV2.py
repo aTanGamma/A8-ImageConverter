@@ -140,27 +140,24 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
 
     def ParseCols(ColArray):
 
+        
         FlatColours = ''.join([Letter for Colour in ColArray for Letter in Colour])
-        ImgProcesses.ParseColours.restype = POINTER(c_int * (len(ColArray) * 3))
-        ParseCols_P = ImgProcesses.ParseColours(FlatColours, len(ColArray), len(ColArray[0]))
-        ParsedCols = deepcopy(np.asarray(ParseCols_P.contents))
-        ImgProcesses.FreeMem(ParseCols_P)
+        ParsedCols = (c_int * (len(ColArray) * 3))()
+        ImgProcesses.ParseColours(FlatColours, byref(ParsedCols), len(ColArray), len(ColArray[0]))
 
         return ParsedCols
     
-    def CalcColDist(ImgPalette, ColPalette):
+    def CalcColDist(ImgPalette, UsrPalette):
 
-        UsrColArray = (c_uint * len(ColPalette))()
-        UsrColArray[:] = ColPalette
+        UsrColArray = (c_uint * len(UsrPalette))()
+        UsrColArray[:] = UsrPalette
         
         ImgColArray = (c_uint * len(ImgPalette))()
         ImgColArray[:] = ImgPalette
-        
-        ImgProcesses.ColourDistance.restype = POINTER(c_uint * (len(ImgColArray)//3))
-        
-        CDist_P = ImgProcesses.ColourDistance(ImgColArray, UsrColArray, len(ImgColArray), len(UsrColArray))
-        CDist = deepcopy(np.ctypeslib.as_array(CDist_P.contents).tolist())
-        ImgProcesses.FreeMem(CDist_P)
+
+        CDist = (c_uint * (len(UsrPalette) // 3 * len(ImgPalette)//3 // 4))()
+
+        ImgProcesses.ColourDistance(ImgColArray, UsrColArray, byref(CDist), len(ImgColArray), len(UsrColArray))
 
         return CDist
 
@@ -169,42 +166,41 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         ImgArray = (c_uint * len(Img))()
         ImgArray[:] = Img
 
-        ImgProcesses.ResizeImage.restype = POINTER(c_int * (OutW * OutH))
-        Resized_P = ImgProcesses.ResizeImage(ImgArray, ImgW, ImgH, OutW, OutH)
-        Resized = deepcopy(np.asarray(Resized_P.contents).tolist())
-        ImgProcesses.FreeMem(Resized_P)
+        Resized = (c_int * (OutW * OutH))()
+        ImgProcesses.ResizeImage(ImgArray, ImgW, ImgH, byref(Resized), OutW, OutH)
 
         return Resized
 
     def ImgScaler(Img, Sx, Sy, ImgW, ImgH):
 
-        UnflatImg = [[Img[Row*ImgW + Col]for Col in range(ImgW)] for Row in range(ImgH)]
 
-        ScaleX_1 = [[[UnflatImg[Row][Col]]*Sx for Col in range(len(UnflatImg[0]))] for Row in range(len(UnflatImg))]
+        ImgArray = (c_int * len(Img))()
+        ImgArray[:] = Img
 
-        ScaleX = [[Num for Col in Row for Num in Col] for Row in ScaleX_1]
+        t_Scaled = (c_int * (len(Img) * Sx * Sy))()
+        ImgProcesses.ImageScaler(ImgArray, byref(t_Scaled), ImgW, ImgH, Sx, Sy)
 
-        ScaleY = [Row for Row in ScaleX for n in range(Sy)]
+        NewW = ImgW * Sx
+        NewH = ImgH * Sy
 
-        Flattened = [N for Row in ScaleY for N in Row]
+        #print(t_Scaled[0:20], '\n', Flattened[0:20])
 
-        NewW = len(ScaleY[0])
-        NewH = len(ScaleY)
-
-        return Flattened, NewW, NewH
+        return t_Scaled, NewW, NewH
 
     def AdjustCols(H, S, V, *ImgCols):
 
-        #Algorithms from https://www.rapidtables.com/convert/color/hsv-to-rgb.html and https://www.rapidtables.com/convert/color/rgb-to-hsv.html
+        #Explanations of algorithms from 
+        #https://www.rapidtables.com/convert/color/hsv-to-rgb.html 
+        #and 
+        #https://www.rapidtables.com/convert/color/rgb-to-hsv.html
 
         flatCols = [rgb for Col in ImgCols[0] for rgb in Col]
         flatColArray = (c_int * len(flatCols))()
         flatColArray[:] = [*flatCols]
 
-        ImgProcesses.AdjustColours.restype = POINTER(c_int * (len(flatCols)))
-        AdjustedRGB_P = ImgProcesses.AdjustColours(flatColArray, len(flatColArray), int(H), int(S), int(V))
-        AdjustedRGB = deepcopy(np.asarray(AdjustedRGB_P.contents))
-        ImgProcesses.FreeMem(AdjustedRGB_P)
+        AdjustedRGB = (c_int * (len(flatCols)))()
+
+        ImgProcesses.AdjustColours(flatColArray, byref(AdjustedRGB), len(flatColArray), int(H), int(S), int(V))
 
         return AdjustedRGB
 
@@ -252,11 +248,12 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         ImgArrayPtr = (c_uint * len(TempAdjImg))()
         ImgArrayPtr[:] = TempAdjImg
 
-        t_AdjustedImg = (c_uint8 * (ImgWidth*ImgHeight*3))()
-        ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(t_AdjustedImg), ImgWidth, ImgHeight, 0)
-        AdjustedImg = np.array(t_AdjustedImg)
+        AdjustedImg = (c_uint8 * (ImgWidth*ImgHeight*3))()
+        ImgProcesses.FormatImg(IntColArray, ImgArrayPtr, byref(AdjustedImg), ImgWidth, ImgHeight, 0)
+        AdjustedImg = np.array(AdjustedImg).astype(np.uint8)
         AdjustedImg.shape = (ImgHeight, ImgWidth, 3)
-        
+
+
         ShrunkImg = [[0,0,0]]
         TempImg = [[0,0,0]]
         NewImg = [[0,0,0]]
@@ -264,6 +261,7 @@ def ImgProcessor(Path, Mode, Auto, OutW, OutH, Width, Rastered,Hue, Sat, Brightn
         if Mode == 0:   #160x96, not interlaced
 
             ShrunkImg = ImgResizer(ImgData, ImgWidth, ImgHeight, OutW, OutH)
+            
             RefPalette = CalcColDist(ImgPalette, IntCols[0:12]) #Finds the distance btween all colours in image and selected palette, creating a referance palette
             NewImgCols = [RefPalette[ShrunkImg[i]] for i in range(len(ShrunkImg))]  #Convert old image to new colour space
             ResizedTempImg, TempW, TempH = ImgScaler(NewImgCols, 4, 4, OutW, OutH)
@@ -600,7 +598,10 @@ BrightAdjust = 0
 Hues = Temp_Hues = ['#808080']*16
 Vals = Temp_Vals = ['#808080']*16
 
+frametimes = [0]
+
 while True:
+
     event, values = window.read()
 
     if (event == gui.WIN_CLOSED):   #Check for window closed
@@ -855,5 +856,5 @@ while True:
 
     window.refresh()
 
-window.close()
 
+window.close()
